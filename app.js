@@ -1,11 +1,11 @@
 // ── CONFIG ──────────────────────────────────────────────────────────
 const CLIENT_ID = '469662960124-l8ssq4psn55oupe0t6ouu2laeiol1abv.apps.googleusercontent.com';
-const APP_VERSION = '2026.07.25.4';
+const APP_VERSION = '2026.07.25.6';
 const SPREADSHEET_ID = '16J873aq698SxJsFgiWcNJOubn3R3z_5_J8NMlrsuIsA';
 const TAXONOMY_SHEET_ID = '1oQM1alY_nyVpk8LcHsFmEMpEk-jy0b18vf506_ubj9s';
 const BOARD_SHEET_ID = '1LPMQEO9DCQ7-CAKtCIDkWTOFZ3mK6e1qBcDfa3lggQQ';
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
-const RANGE = 'A:G'; // Task ID | Task | Activity Tag | Due Date | Priority | Notes | Done
+const RANGE = 'A:H'; // Task ID | Task | Activity Tag | Due Date | Priority | Notes | Done | Today
 const TAXONOMY_RANGE = 'A:E'; // Code | Label | Parent | Domain | Notes
 const BOARD_RANGE = 'A:J'; // Code | Name | Domain | Stage | Priority | NextUp | Notes | MilestoneDate | Updated | Show
 
@@ -42,9 +42,9 @@ function loadTaxonomyCache() {
   const raw = localStorage.getItem(TAXONOMY_CACHE_KEY);
   return raw ? JSON.parse(raw) : {};
 }
-function queueWrite(row, value) {
+function queueWrite(row, column, value) {
   const q = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
-  q.push({ row, value, ts: Date.now() });
+  q.push({ row, column, value, ts: Date.now() });
   localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
 }
 function getQueue() {
@@ -196,7 +196,8 @@ async function fetchTasks() {
       due: r[3] || '',
       priority: r[4] || 'Medium',
       notes: r[5] || '',
-      done: (r[6] || '').toString().toUpperCase() === 'TRUE'
+      done: (r[6] || '').toString().toUpperCase() === 'TRUE',
+      today: (r[7] || '').toString().toUpperCase() === 'TRUE'
     })).filter(t => t.id);
     saveCache(tasks);
     setStatus('Synced ' + new Date().toLocaleTimeString());
@@ -209,33 +210,41 @@ async function fetchTasks() {
   }
 }
 
-// ── WRITE (checkbox toggle) ────────────────────────────────────────
-async function toggleDone(task, checked) {
-  task.done = checked;
+// ── WRITE (checkbox / today toggle) ─────────────────────────────────
+async function writeColumn(task, column, field, value) {
+  task[field] = value;
   saveCache(tasks); // optimistic local update
   render();
 
   if (accessToken && navigator.onLine) {
     try {
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/G${task.row}?valueInputOption=RAW`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${column}${task.row}?valueInputOption=RAW`;
       const res = await fetch(url, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ values: [[checked ? 'TRUE' : 'FALSE']] })
+        body: JSON.stringify({ values: [[value ? 'TRUE' : 'FALSE']] })
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       setStatus('Saved.');
     } catch (e) {
-      queueWrite(task.row, checked ? 'TRUE' : 'FALSE');
+      queueWrite(task.row, column, value ? 'TRUE' : 'FALSE');
       setStatus('Offline or write failed — queued for later sync.');
     }
   } else {
-    queueWrite(task.row, checked ? 'TRUE' : 'FALSE');
+    queueWrite(task.row, column, value ? 'TRUE' : 'FALSE');
     setStatus('Offline — change queued, will sync when connected.');
   }
+}
+
+function toggleDone(task, checked) {
+  return writeColumn(task, 'G', 'done', checked);
+}
+
+function toggleTodayShared(task, checked) {
+  return writeColumn(task, 'H', 'today', checked);
 }
 
 async function flushQueue() {
@@ -244,7 +253,7 @@ async function flushQueue() {
   setStatus('Syncing ' + q.length + ' queued change(s)…');
   for (const item of q) {
     try {
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/G${item.row}?valueInputOption=RAW`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${item.column}${item.row}?valueInputOption=RAW`;
       await fetch(url, {
         method: 'PUT',
         headers: {
@@ -280,9 +289,13 @@ function render() {
   const container = document.getElementById('tasks');
   container.innerHTML = '';
 
-  const todayItems = list.filter(t => t.due === today);
-  const workItems = list.filter(t => t.tag.trim().startsWith('W') && t.due !== today);
-  const personalItems = list.filter(t => t.tag.trim().startsWith('P') && t.due !== today);
+  const todayItems = list.filter(t => isToday(t));
+  const workItems = list.filter(t => t.tag.trim().startsWith('W') && !isToday(t));
+  const personalItems = list.filter(t => t.tag.trim().startsWith('P') && !isToday(t));
+
+  function isToday(t) {
+    return t.due === today || t.today;
+  }
 
   function taskRow(t) {
     const row = document.createElement('label');
@@ -293,8 +306,14 @@ function render() {
         <div class="label">${t.task}</div>
         <div class="proj">${labelTag(t.tag)} · <span class="priority-tag">${t.priority || 'Medium'}</span></div>
       </div>
-      <div class="due-col">${t.due || ''}</div>`;
+      <div class="due-col">${t.due || ''}</div>
+      <div class="today-btn ${isToday(t) ? 'active' : ''}" title="Toggle Today"></div>`;
     row.querySelector('input').addEventListener('change', (e) => toggleDone(t, e.target.checked));
+    row.querySelector('.today-btn').addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleTodayShared(t, !isToday(t));
+    });
     return row;
   }
 
@@ -450,6 +469,13 @@ window.addEventListener('load', () => {
   versionTag.id = 'version-tag';
   versionTag.textContent = 'App code: ' + APP_VERSION;
   document.body.insertBefore(versionTag, document.getElementById('status'));
+
+  // Weekend default: Personal shows first on Sat/Sun unless user toggles it during the session.
+  const dayOfWeek = new Date().getDay();
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    domainFirst = 'Personal';
+    document.getElementById('sort-domain').textContent = 'Personal first';
+  }
 
   tasks = loadCache();
   const cachedTax = loadTaxonomyCache();
