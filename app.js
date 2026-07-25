@@ -10,13 +10,14 @@ const BOARD_RANGE = 'A:J'; // Code | Name | Domain | Stage | Priority | NextUp |
 
 let activeTab = 'tasks'; // 'tasks' | 'board'
 let domainFirst = 'Work'; // 'Work' | 'Personal' — which section renders first
-let sortMode = 'priority'; // 'priority' | 'urgency'
+let sortMode = 'priority'; // 'category' | 'priority' | 'urgency'
 
 // ── STATE ───────────────────────────────────────────────────────────
 let tokenClient = null;
 let accessToken = null;
 let tasks = []; // [{row, id, task, tag, due, priority, notes, done}]
 let taxonomy = {}; // Code -> Label lookup
+let taxonomyParent = {}; // Code -> Parent code lookup (for resolving top-level category)
 let board = []; // [{code, name, domain, stage, priority, nextUp, notes, milestoneDate, updated, show}]
 
 // ── STORAGE HELPERS (offline cache + pending write queue) ─────────
@@ -86,7 +87,9 @@ function initAuth() {
     setStatus('Connected (cached).');
     if (navigator.onLine) Promise.all([fetchTaxonomy(), fetchBoard()]).then(fetchTasks);
   } else {
-    taxonomy = loadTaxonomyCache(); // still show cached labels while offline/signed-out
+    const cachedTax = loadTaxonomyCache();
+    taxonomy = cachedTax.labels || {};
+    taxonomyParent = cachedTax.parents || {};
   }
 }
 
@@ -104,16 +107,40 @@ async function fetchTaxonomy() {
     const data = await res.json();
     const rows = (data.values || []).slice(1); // drop header
     const map = {};
-    rows.forEach(r => { if (r[0]) map[r[0].trim()] = r[1] || r[0]; });
+    const parentMap = {};
+    rows.forEach(r => {
+      if (!r[0]) return;
+      const code = r[0].trim();
+      map[code] = r[1] || code;
+      parentMap[code] = (r[2] || '').trim();
+    });
     taxonomy = map;
-    saveTaxonomyCache(map);
+    taxonomyParent = parentMap;
+    saveTaxonomyCache({ labels: map, parents: parentMap });
   } catch (e) {
-    taxonomy = loadTaxonomyCache(); // fall back silently, labels just won't show
+    const cached = loadTaxonomyCache();
+    taxonomy = cached.labels || {};
+    taxonomyParent = cached.parents || {};
   }
 }
 
 // Turns "W.1 · C.AFE" or "W.1 / W.3" into "W.1 (CCDRs) · C.AFE (Africa East)" —
 // unrecognized fragments (like free-text "KTCCA") pass through unchanged.
+// Climbs the taxonomy parent chain to find the top-level category under Work/Personal
+// (e.g. W.12.1 -> W.12 "WBG Admin"; W.1 -> itself "CCDRs"). Falls back to the raw code
+// if it's not a recognized taxonomy entry (e.g. free-text like "KTCCA").
+function getCategoryLabel(tag) {
+  if (!tag) return 'Uncategorized';
+  const primary = tag.split(/[·/]/).map(t => t.trim()).find(t => /^[WP]/.test(t)) || tag.trim();
+  let current = primary;
+  let guard = 0;
+  while (taxonomyParent[current] && taxonomyParent[current] !== 'W' && taxonomyParent[current] !== 'P' && guard < 10) {
+    current = taxonomyParent[current];
+    guard++;
+  }
+  return taxonomy[current] || current;
+}
+
 function labelTag(tag) {
   if (!tag) return '';
   return tag.split(/[·/]/).map(part => {
@@ -255,48 +282,78 @@ function render() {
   const workItems = list.filter(t => t.tag.trim().startsWith('W') && t.due !== today && !t.done);
   const personalItems = list.filter(t => t.tag.trim().startsWith('P') && t.due !== today && !t.done);
 
-  function sortItems(items) {
-    if (sortMode === 'urgency') {
-      // Overdue/soonest due date first; blank due dates sink to the bottom.
-      return items.sort((a, b) => {
+  function taskRow(t) {
+    const row = document.createElement('label');
+    row.className = 'item' + (t.done ? ' done' : '');
+    row.innerHTML = `
+      <input type="checkbox" ${t.done ? 'checked' : ''} />
+      <div class="content">
+        <div class="label">${t.task}</div>
+        <div class="proj">${labelTag(t.tag)}</div>
+      </div>
+      <div class="due-col">${t.due || ''}</div>`;
+    row.querySelector('input').addEventListener('change', (e) => toggleDone(t, e.target.checked));
+    return row;
+  }
+
+  function subhead(text) {
+    const h = document.createElement('div');
+    h.className = 'subhead';
+    h.textContent = text;
+    return h;
+  }
+
+  function domainHead(text) {
+    const h = document.createElement('div');
+    h.className = 'group-head';
+    h.textContent = text;
+    return h;
+  }
+
+  function renderDomainSection(title, items) {
+    if (!items.length) return;
+    container.appendChild(domainHead(title));
+
+    if (sortMode === 'category') {
+      const groups = {};
+      items.forEach(t => {
+        const cat = getCategoryLabel(t.tag);
+        (groups[cat] = groups[cat] || []).push(t);
+      });
+      Object.keys(groups).sort().forEach(cat => {
+        container.appendChild(subhead(cat));
+        groups[cat].forEach(t => container.appendChild(taskRow(t)));
+      });
+    } else if (sortMode === 'priority') {
+      const tiers = ['High', 'Medium', 'Low'];
+      tiers.forEach(tier => {
+        const inTier = items.filter(t => (t.priority || 'Medium') === tier);
+        if (!inTier.length) return;
+        container.appendChild(subhead(tier));
+        inTier.forEach(t => container.appendChild(taskRow(t)));
+      });
+    } else { // urgency — flat, sorted by due date, no subheadings
+      const sorted = [...items].sort((a, b) => {
         if (!a.due && !b.due) return 0;
         if (!a.due) return 1;
         if (!b.due) return -1;
         return a.due.localeCompare(b.due);
       });
+      sorted.forEach(t => container.appendChild(taskRow(t)));
     }
-    const order = { High: 0, Medium: 1, Low: 2 };
-    return items.sort((a, b) => (order[a.priority] ?? 1) - (order[b.priority] ?? 1));
   }
 
-  function section(title, items) {
-    if (!items.length) return;
-    const h = document.createElement('div');
-    h.className = 'group-head';
-    h.textContent = title;
-    container.appendChild(h);
-
-    sortItems(items).forEach(t => {
-      const row = document.createElement('label');
-      row.className = 'item' + (t.done ? ' done' : '');
-      row.innerHTML = `
-        <input type="checkbox" ${t.done ? 'checked' : ''} />
-        <div class="content">
-          <div class="label">${t.task}</div>
-          <div class="proj">${labelTag(t.tag)}${t.due ? ' · due ' + t.due : ''}</div>
-        </div>`;
-      row.querySelector('input').addEventListener('change', (e) => toggleDone(t, e.target.checked));
-      container.appendChild(row);
-    });
+  if (todayItems.length) {
+    container.appendChild(domainHead('Today'));
+    todayItems.forEach(t => container.appendChild(taskRow(t)));
   }
 
-  section('Today', todayItems);
   if (domainFirst === 'Personal') {
-    section('Personal', personalItems);
-    section('Work', workItems);
+    renderDomainSection('Personal', personalItems);
+    renderDomainSection('Work', workItems);
   } else {
-    section('Work', workItems);
-    section('Personal', personalItems);
+    renderDomainSection('Work', workItems);
+    renderDomainSection('Personal', personalItems);
   }
 
   if (!list.length) {
@@ -358,7 +415,9 @@ function renderBoard() {
 // ── INIT ────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
   tasks = loadCache();
-  taxonomy = loadTaxonomyCache();
+  const cachedTax = loadTaxonomyCache();
+  taxonomy = cachedTax.labels || {};
+  taxonomyParent = cachedTax.parents || {};
   board = JSON.parse(localStorage.getItem('board_cache') || '[]');
   render();
   initAuth();
@@ -371,10 +430,15 @@ window.addEventListener('load', () => {
     document.getElementById('sort-domain').textContent = domainFirst + ' first';
     render();
   });
-  document.getElementById('sort-mode').addEventListener('click', () => {
-    sortMode = sortMode === 'priority' ? 'urgency' : 'priority';
-    document.getElementById('sort-mode').textContent = sortMode === 'priority' ? 'By priority' : 'By urgency';
-    render();
+
+  ['category', 'priority', 'urgency'].forEach(mode => {
+    document.getElementById('sort-' + mode).addEventListener('click', () => {
+      sortMode = mode;
+      ['category', 'priority', 'urgency'].forEach(m =>
+        document.getElementById('sort-' + m).classList.toggle('active', m === mode)
+      );
+      render();
+    });
   });
 });
 
@@ -393,5 +457,13 @@ window.addEventListener('online', () => {
 window.addEventListener('offline', () => setStatus('Offline — showing cached data.'));
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js');
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    });
+  });
 }
