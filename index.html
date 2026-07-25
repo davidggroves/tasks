@@ -30,11 +30,16 @@
     background: #fff; cursor: pointer; color: #555; font-family: inherit;
   }
   .tab-bar button.active { background: #1a1a18; color: #fff; border-color: #1a1a18; }
-  #sort-controls { display: flex; gap: 6px; margin-bottom: 1rem; }
+  #sort-controls { display: flex; gap: 6px; margin-bottom: 1rem; flex-wrap: wrap; }
   #sort-controls button {
     font-size: 12px; padding: 5px 12px; border: 1px solid #d0cfc8; border-radius: 16px;
     background: #f0f0ee; cursor: pointer; color: #666; font-family: inherit;
   }
+  #sort-controls button.active { background: #0d8c72; color: #fff; border-color: #0d8c72; }
+  .subhead {
+    font-size: 12px; font-weight: 600; color: #666; margin: 0.6rem 0 0.15rem 4px;
+  }
+  .due-col { margin-left: auto; font-size: 11.5px; color: #999; white-space: nowrap; padding-top: 2px; flex-shrink: 0; }
   .board-card {
     border: 1px solid #e0dfd8; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
     border-left: 3px solid #ccc;
@@ -74,6 +79,7 @@
     .label { color: #e8e6df; }
     .item.done .label { color: #666; }
     .proj { color: #888; }
+    .subhead { color: #999; }
     .tab-bar button { background: #252523; border-color: #333; color: #999; }
     .tab-bar button.active { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
     #sort-controls button { background: #252523; border-color: #333; color: #999; }
@@ -95,7 +101,9 @@
   </div>
   <div id="sort-controls">
     <button id="sort-domain">Work first</button>
-    <button id="sort-mode">By priority</button>
+    <button id="sort-category">By Category</button>
+    <button id="sort-priority" class="active">By Priority</button>
+    <button id="sort-urgency">By Urgency</button>
   </div>
   <div id="tasks"></div>
   <script src="./app.js"></script>
