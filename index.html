@@ -72,6 +72,7 @@
   .label { font-size: 14px; font-weight: 500; }
   .item.done .label { color: #aaa; text-decoration: line-through; }
   .proj { font-size: 11.5px; color: #999; margin-top: 2px; }
+  .priority-tag { font-weight: 600; }
   .empty { font-size: 13px; color: #999; padding: 2rem 0; text-align: center; }
   @media (prefers-color-scheme: dark) {
     body { background: #1c1c1a; color: #e8e6df; }
@@ -104,7 +105,6 @@
     <button id="sort-domain">Work first</button>
     <button id="sort-category">By Category</button>
     <button id="sort-priority" class="active">By Priority</button>
-    <button id="sort-urgency">By Urgency</button>
   </div>
   <div id="tasks"></div>
   <script src="./app.js"></script>
