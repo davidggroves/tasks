@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tasks-app-2026.07.25.1';
+const CACHE_NAME = 'tasks-app-2026.07.25.2';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -29,9 +29,20 @@ self.addEventListener('activate', (event) => {
 // app.js handles its own offline data caching via localStorage, not this worker.
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  const isShellRequest = SHELL_FILES.some((f) => url.pathname.endsWith(f.replace('./', '')));
 
-  if (!isShellRequest) return; // let network calls (Google APIs) pass through untouched
+  // Never touch cross-origin requests (Sheets API, Google auth) — only same-origin
+  // app-shell files are candidates for caching here.
+  if (url.origin !== self.location.origin) return;
+
+  // Cache API only supports GET — writes (PUT/POST to Sheets) must always pass through untouched.
+  if (event.request.method !== 'GET') return;
+
+  const isShellRequest = SHELL_FILES.some((f) => {
+    const path = f.replace('./', '');
+    return path !== '' && url.pathname.endsWith(path);
+  }) || url.pathname.endsWith('/');
+
+  if (!isShellRequest) return;
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
