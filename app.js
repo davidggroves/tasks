@@ -1,6 +1,6 @@
 // ── CONFIG ──────────────────────────────────────────────────────────
 const CLIENT_ID = '469662960124-l8ssq4psn55oupe0t6ouu2laeiol1abv.apps.googleusercontent.com';
-const APP_VERSION = 'v3';
+const APP_VERSION = 'v4';
 const SPREADSHEET_ID = '16J873aq698SxJsFgiWcNJOubn3R3z_5_J8NMlrsuIsA';
 const TAXONOMY_SHEET_ID = '1oQM1alY_nyVpk8LcHsFmEMpEk-jy0b18vf506_ubj9s';
 const BOARD_SHEET_ID = '1LPMQEO9DCQ7-CAKtCIDkWTOFZ3mK6e1qBcDfa3lggQQ';
@@ -11,7 +11,7 @@ const BOARD_RANGE = 'A:J'; // Code | Name | Domain | Stage | Priority | NextUp |
 
 let activeTab = 'tasks'; // 'tasks' | 'board'
 let domainFirst = 'Work'; // 'Work' | 'Personal' — which section renders first
-let sortMode = 'priority'; // 'category' | 'priority' | 'urgency'
+let sortMode = 'priority'; // 'category' | 'priority'
 
 // ── STATE ───────────────────────────────────────────────────────────
 let tokenClient = null;
@@ -290,7 +290,7 @@ function render() {
       <input type="checkbox" ${t.done ? 'checked' : ''} />
       <div class="content">
         <div class="label">${t.task}</div>
-        <div class="proj">${labelTag(t.tag)}</div>
+        <div class="proj">${labelTag(t.tag)} · <span class="priority-tag">${t.priority || 'Medium'}</span></div>
       </div>
       <div class="due-col">${t.due || ''}</div>`;
     row.querySelector('input').addEventListener('change', (e) => toggleDone(t, e.target.checked));
@@ -311,6 +311,20 @@ function render() {
     return h;
   }
 
+  function byDateAscending(items) {
+    return [...items].sort((a, b) => {
+      if (!a.due && !b.due) return 0;
+      if (!a.due) return 1;
+      if (!b.due) return -1;
+      return a.due.localeCompare(b.due);
+    });
+  }
+
+  function byPriorityThenDate(items) {
+    const order = { High: 0, Medium: 1, Low: 2 };
+    return byDateAscending(items).sort((a, b) => (order[a.priority] ?? 1) - (order[b.priority] ?? 1));
+  }
+
   function renderDomainSection(title, items) {
     if (!items.length) return;
     container.appendChild(domainHead(title));
@@ -323,24 +337,16 @@ function render() {
       });
       Object.keys(groups).sort().forEach(cat => {
         container.appendChild(subhead(cat));
-        groups[cat].forEach(t => container.appendChild(taskRow(t)));
+        byPriorityThenDate(groups[cat]).forEach(t => container.appendChild(taskRow(t)));
       });
-    } else if (sortMode === 'priority') {
+    } else { // priority
       const tiers = ['High', 'Medium', 'Low'];
       tiers.forEach(tier => {
         const inTier = items.filter(t => (t.priority || 'Medium') === tier);
         if (!inTier.length) return;
         container.appendChild(subhead(tier));
-        inTier.forEach(t => container.appendChild(taskRow(t)));
+        byDateAscending(inTier).forEach(t => container.appendChild(taskRow(t)));
       });
-    } else { // urgency — flat, sorted by due date, no subheadings
-      const sorted = [...items].sort((a, b) => {
-        if (!a.due && !b.due) return 0;
-        if (!a.due) return 1;
-        if (!b.due) return -1;
-        return a.due.localeCompare(b.due);
-      });
-      sorted.forEach(t => container.appendChild(taskRow(t)));
     }
   }
 
@@ -438,10 +444,10 @@ window.addEventListener('load', () => {
     render();
   });
 
-  ['category', 'priority', 'urgency'].forEach(mode => {
+  ['category', 'priority'].forEach(mode => {
     document.getElementById('sort-' + mode).addEventListener('click', () => {
       sortMode = mode;
-      ['category', 'priority', 'urgency'].forEach(m =>
+      ['category', 'priority'].forEach(m =>
         document.getElementById('sort-' + m).classList.toggle('active', m === mode)
       );
       render();
