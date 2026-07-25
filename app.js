@@ -1,6 +1,6 @@
 // ── CONFIG ──────────────────────────────────────────────────────────
 const CLIENT_ID = '469662960124-l8ssq4psn55oupe0t6ouu2laeiol1abv.apps.googleusercontent.com';
-const APP_VERSION = '2026.07.25.1';
+const APP_VERSION = '2026.07.25.2';
 const SPREADSHEET_ID = '16J873aq698SxJsFgiWcNJOubn3R3z_5_J8NMlrsuIsA';
 const TAXONOMY_SHEET_ID = '1oQM1alY_nyVpk8LcHsFmEMpEk-jy0b18vf506_ubj9s';
 const BOARD_SHEET_ID = '1LPMQEO9DCQ7-CAKtCIDkWTOFZ3mK6e1qBcDfa3lggQQ';
@@ -279,9 +279,9 @@ function render() {
   const container = document.getElementById('tasks');
   container.innerHTML = '';
 
-  const todayItems = list.filter(t => t.due === today && !t.done);
-  const workItems = list.filter(t => t.tag.trim().startsWith('W') && t.due !== today && !t.done);
-  const personalItems = list.filter(t => t.tag.trim().startsWith('P') && t.due !== today && !t.done);
+  const todayItems = list.filter(t => t.due === today);
+  const workItems = list.filter(t => t.tag.trim().startsWith('W') && t.due !== today);
+  const personalItems = list.filter(t => t.tag.trim().startsWith('P') && t.due !== today);
 
   function taskRow(t) {
     const row = document.createElement('label');
