@@ -24,6 +24,33 @@
     padding: 10px 16px; font-size: 14px; font-weight: 500; cursor: pointer;
     margin-bottom: 1rem;
   }
+  .tab-bar { display: flex; gap: 6px; margin-bottom: 0.75rem; }
+  .tab-bar button {
+    font-size: 13px; padding: 6px 14px; border: 1px solid #d0cfc8; border-radius: 20px;
+    background: #fff; cursor: pointer; color: #555; font-family: inherit;
+  }
+  .tab-bar button.active { background: #1a1a18; color: #fff; border-color: #1a1a18; }
+  #sort-controls { display: flex; gap: 6px; margin-bottom: 1rem; }
+  #sort-controls button {
+    font-size: 12px; padding: 5px 12px; border: 1px solid #d0cfc8; border-radius: 16px;
+    background: #f0f0ee; cursor: pointer; color: #666; font-family: inherit;
+  }
+  .board-card {
+    border: 1px solid #e0dfd8; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+    border-left: 3px solid #ccc;
+  }
+  .board-card.priority-high { border-left-color: #c0392b; }
+  .board-card.priority-medium { border-left-color: #e67e22; }
+  .board-card.priority-low { border-left-color: #ccc; }
+  .board-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+  .board-code { font-size: 10.5px; color: #999; }
+  .board-stage { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #888; background: #f0f0ee; padding: 2px 6px; border-radius: 3px; }
+  .board-name { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+  .board-next { font-size: 12.5px; color: #444; margin-bottom: 4px; }
+  .board-track { position: relative; height: 4px; background: #eee; border-radius: 2px; margin: 6px 0 2px; }
+  .board-marker { position: absolute; top: -3px; width: 10px; height: 10px; border-radius: 50%; background: #0d8c72; transform: translateX(-50%); }
+  .board-date { font-size: 10.5px; color: #999; margin-bottom: 4px; }
+  .board-notes { font-size: 11.5px; color: #888; line-height: 1.4; }
   .group-head {
     font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
     color: #888; margin: 1.2rem 0 0.4rem; padding-bottom: 4px; border-bottom: 1.5px solid #d0cfc8;
@@ -47,6 +74,14 @@
     .label { color: #e8e6df; }
     .item.done .label { color: #666; }
     .proj { color: #888; }
+    .tab-bar button { background: #252523; border-color: #333; color: #999; }
+    .tab-bar button.active { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
+    #sort-controls button { background: #252523; border-color: #333; color: #999; }
+    .board-card { border-color: #333; }
+    .board-stage { background: #252523; color: #999; }
+    .board-name { color: #e8e6df; }
+    .board-next { color: #ccc; }
+    .board-notes { color: #888; }
   }
 </style>
 </head>
@@ -54,6 +89,14 @@
   <h1>Tasks</h1>
   <div id="status">Loading…</div>
   <button id="connect-btn">Connect to Google</button>
+  <div class="tab-bar">
+    <button id="tab-tasks" class="active">Tasks</button>
+    <button id="tab-board">Board</button>
+  </div>
+  <div id="sort-controls">
+    <button id="sort-domain">Work first</button>
+    <button id="sort-mode">By priority</button>
+  </div>
   <div id="tasks"></div>
   <script src="./app.js"></script>
 </body>
