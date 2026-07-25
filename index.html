@@ -31,12 +31,14 @@
     background: #fff; cursor: pointer; color: #555; font-family: inherit;
   }
   .tab-bar button.active { background: #1a1a18; color: #fff; border-color: #1a1a18; }
-  #sort-controls { display: flex; gap: 6px; margin-bottom: 1rem; flex-wrap: wrap; }
-  #sort-controls button {
+  #sort-controls, #board-controls { display: flex; gap: 6px; margin-bottom: 1rem; flex-wrap: wrap; }
+  #sort-controls button, #board-controls button {
     font-size: 12px; padding: 5px 12px; border: 1px solid #d0cfc8; border-radius: 16px;
     background: #f0f0ee; cursor: pointer; color: #666; font-family: inherit;
   }
-  #sort-controls button.active { background: #0d8c72; color: #fff; border-color: #0d8c72; }
+  #sort-controls button.active, #board-controls button.active { background: #0d8c72; color: #fff; border-color: #0d8c72; }
+  .board-card.untracked { opacity: 0.6; border-left-color: #ddd; }
+  .board-card.untracked .board-stage { background: transparent; color: #bbb; }
   .subhead {
     font-size: 12px; font-weight: 600; color: #666; margin: 0.6rem 0 0.15rem 4px;
   }
@@ -84,7 +86,7 @@
     .subhead { color: #999; }
     .tab-bar button { background: #252523; border-color: #333; color: #999; }
     .tab-bar button.active { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
-    #sort-controls button { background: #252523; border-color: #333; color: #999; }
+    #sort-controls button, #board-controls button { background: #252523; border-color: #333; color: #999; }
     .board-card { border-color: #333; }
     .board-stage { background: #252523; color: #999; }
     .board-name { color: #e8e6df; }
@@ -105,6 +107,10 @@
     <button id="sort-domain">Work first</button>
     <button id="sort-category">By Category</button>
     <button id="sort-priority" class="active">By Priority</button>
+  </div>
+  <div id="board-controls" style="display:none">
+    <button id="board-tracked" class="active">Tracked Only</button>
+    <button id="board-all">All Categories</button>
   </div>
   <div id="tasks"></div>
   <script src="./app.js"></script>
