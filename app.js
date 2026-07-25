@@ -1,6 +1,6 @@
 // ── CONFIG ──────────────────────────────────────────────────────────
 const CLIENT_ID = '469662960124-l8ssq4psn55oupe0t6ouu2laeiol1abv.apps.googleusercontent.com';
-const APP_VERSION = '2026.07.25.2';
+const APP_VERSION = '2026.07.25.3';
 const SPREADSHEET_ID = '16J873aq698SxJsFgiWcNJOubn3R3z_5_J8NMlrsuIsA';
 const TAXONOMY_SHEET_ID = '1oQM1alY_nyVpk8LcHsFmEMpEk-jy0b18vf506_ubj9s';
 const BOARD_SHEET_ID = '1LPMQEO9DCQ7-CAKtCIDkWTOFZ3mK6e1qBcDfa3lggQQ';
@@ -12,6 +12,7 @@ const BOARD_RANGE = 'A:J'; // Code | Name | Domain | Stage | Priority | NextUp |
 let activeTab = 'tasks'; // 'tasks' | 'board'
 let domainFirst = 'Work'; // 'Work' | 'Personal' — which section renders first
 let sortMode = 'priority'; // 'category' | 'priority'
+let boardMode = 'tracked'; // 'tracked' | 'all'
 
 // ── STATE ───────────────────────────────────────────────────────────
 let tokenClient = null;
@@ -377,44 +378,64 @@ function yearProgressPct(dateStr) {
   return Math.round(((d - start) / (end - start)) * 100);
 }
 
+function getTopLevelCodes(domainRoot) {
+  return Object.keys(taxonomyParent).filter(code => taxonomyParent[code] === domainRoot).sort();
+}
+
 function renderBoard() {
   const container = document.getElementById('tasks');
   container.innerHTML = '';
   const list = board.length ? board : JSON.parse(localStorage.getItem('board_cache') || '[]');
-  const visible = list.filter(p => p.show);
+  const boardByCode = {};
+  list.forEach(p => { boardByCode[p.code] = p; });
+
+  function boardCard(p) {
+    const card = document.createElement('div');
+    card.className = 'board-card priority-' + (p.priority || 'Medium').toLowerCase()
+      + (p.stage === 'Untracked' ? ' untracked' : '');
+    const pct = yearProgressPct(p.milestoneDate);
+    card.innerHTML = `
+      <div class="board-head">
+        <span class="board-code">${p.code}${taxonomy[p.code.split(' ')[0]] ? ' · ' + taxonomy[p.code.split(' ')[0]] : ''}</span>
+        <span class="board-stage">${p.stage}</span>
+      </div>
+      <div class="board-name">${p.name}</div>
+      ${p.nextUp ? `<div class="board-next">${p.nextUp}</div>` : ''}
+      ${pct !== null ? `<div class="board-track"><div class="board-marker" style="left:${pct}%"></div></div><div class="board-date">${p.milestoneDate}</div>` : ''}
+      ${p.notes ? `<div class="board-notes">${p.notes}</div>` : ''}`;
+    return card;
+  }
 
   function section(title, domainCode) {
-    const items = visible.filter(p => p.domain === domainCode);
+    let items;
+    if (boardMode === 'all') {
+      const codes = getTopLevelCodes(domainCode);
+      items = codes.map(code => boardByCode[code] || {
+        code, name: taxonomy[code] || code, domain: domainCode, stage: 'Untracked',
+        priority: 'Low', nextUp: '', notes: '', milestoneDate: '', updated: '', show: true
+      });
+    } else {
+      items = list.filter(p => p.domain === domainCode && p.show);
+    }
     if (!items.length) return;
+
     const h = document.createElement('div');
     h.className = 'group-head';
     h.textContent = title;
     container.appendChild(h);
 
-    const stageOrder = { Milestone: 0, Active: 1, Scoping: 2, Waiting: 3, 'Wrapping up': 4, Monitor: 5, 'On-hold': 6 };
+    const stageOrder = { Milestone: 0, Active: 1, Scoping: 2, Waiting: 3, 'Wrapping up': 4, Monitor: 5, 'On-hold': 6, Untracked: 7 };
     items.sort((a, b) => (stageOrder[a.stage] ?? 5) - (stageOrder[b.stage] ?? 5));
-
-    items.forEach(p => {
-      const card = document.createElement('div');
-      card.className = 'board-card priority-' + (p.priority || 'Medium').toLowerCase();
-      const pct = yearProgressPct(p.milestoneDate);
-      card.innerHTML = `
-        <div class="board-head">
-          <span class="board-code">${p.code}${taxonomy[p.code.split(' ')[0]] ? ' · ' + taxonomy[p.code.split(' ')[0]] : ''}</span>
-          <span class="board-stage">${p.stage}</span>
-        </div>
-        <div class="board-name">${p.name}</div>
-        <div class="board-next">${p.nextUp}</div>
-        ${pct !== null ? `<div class="board-track"><div class="board-marker" style="left:${pct}%"></div></div><div class="board-date">${p.milestoneDate}</div>` : ''}
-        <div class="board-notes">${p.notes}</div>`;
-      container.appendChild(card);
-    });
+    items.forEach(p => container.appendChild(boardCard(p)));
   }
 
   section('Work', 'W');
   section('Personal', 'P');
 
-  if (!visible.length) {
+  const anyContent = boardMode === 'all'
+    ? (getTopLevelCodes('W').length || getTopLevelCodes('P').length)
+    : list.some(p => p.show);
+  if (!anyContent) {
     container.innerHTML = '<p class="empty">No board data loaded yet.</p>';
   }
 }
@@ -453,6 +474,16 @@ window.addEventListener('load', () => {
       render();
     });
   });
+
+  ['tracked', 'all'].forEach(mode => {
+    document.getElementById('board-' + mode).addEventListener('click', () => {
+      boardMode = mode;
+      ['tracked', 'all'].forEach(m =>
+        document.getElementById('board-' + m).classList.toggle('active', m === mode)
+      );
+      render();
+    });
+  });
 });
 
 function setTab(tab) {
@@ -460,6 +491,7 @@ function setTab(tab) {
   document.getElementById('tab-tasks').classList.toggle('active', tab === 'tasks');
   document.getElementById('tab-board').classList.toggle('active', tab === 'board');
   document.getElementById('sort-controls').style.display = tab === 'tasks' ? 'flex' : 'none';
+  document.getElementById('board-controls').style.display = tab === 'board' ? 'flex' : 'none';
   render();
 }
 
