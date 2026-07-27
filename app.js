@@ -1,6 +1,6 @@
 // ── CONFIG ──────────────────────────────────────────────────────────
 const CLIENT_ID = '469662960124-l8ssq4psn55oupe0t6ouu2laeiol1abv.apps.googleusercontent.com';
-const APP_VERSION = '2026.07.27.1';
+const APP_VERSION = '2026.07.27.2';
 const SPREADSHEET_ID = '16J873aq698SxJsFgiWcNJOubn3R3z_5_J8NMlrsuIsA';
 const TAXONOMY_SHEET_ID = '1oQM1alY_nyVpk8LcHsFmEMpEk-jy0b18vf506_ubj9s';
 const BOARD_SHEET_ID = '1LPMQEO9DCQ7-CAKtCIDkWTOFZ3mK6e1qBcDfa3lggQQ';
@@ -353,10 +353,11 @@ function render() {
 
   function byDateAscending(items) {
     return [...items].sort((a, b) => {
-      if (!a.due && !b.due) return 0;
-      if (!a.due) return 1;
-      if (!b.due) return -1;
-      return a.due.localeCompare(b.due);
+      const da = normalizeDue(a.due), db = normalizeDue(b.due);
+      if (!da && !db) return 0;
+      if (!da) return 1;
+      if (!db) return -1;
+      return da.localeCompare(db);
     });
   }
 
