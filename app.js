@@ -1,6 +1,6 @@
 // ── CONFIG ──────────────────────────────────────────────────────────
 const CLIENT_ID = '469662960124-l8ssq4psn55oupe0t6ouu2laeiol1abv.apps.googleusercontent.com';
-const APP_VERSION = '2026.07.25.6';
+const APP_VERSION = '2026.07.27.1';
 const SPREADSHEET_ID = '16J873aq698SxJsFgiWcNJOubn3R3z_5_J8NMlrsuIsA';
 const TAXONOMY_SHEET_ID = '1oQM1alY_nyVpk8LcHsFmEMpEk-jy0b18vf506_ubj9s';
 const BOARD_SHEET_ID = '1LPMQEO9DCQ7-CAKtCIDkWTOFZ3mK6e1qBcDfa3lggQQ';
@@ -281,6 +281,26 @@ function todayStr() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+// Parses either "YYYY-MM-DD" or "M/D/YYYY" (both appear in the sheet) into a
+// sortable "YYYY-MM-DD" string. Returns '' if unparseable/empty.
+function normalizeDue(due) {
+  if (!due) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(due)) return due;
+  const m = due.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    const [, mo, da, yr] = m;
+    return yr + '-' + mo.padStart(2, '0') + '-' + da.padStart(2, '0');
+  }
+  return '';
+}
+
+function isOverdue(t) {
+  if (t.done) return false;
+  const norm = normalizeDue(t.due);
+  if (!norm) return false;
+  return norm < todayStr();
+}
+
 function render() {
   if (activeTab === 'board') { renderBoard(); return; }
 
@@ -306,7 +326,7 @@ function render() {
         <div class="label">${t.task}</div>
         <div class="proj">${labelTag(t.tag)} · <span class="priority-tag">${t.priority || 'Medium'}</span></div>
       </div>
-      <div class="due-col">${t.due || ''}</div>
+      <div class="due-col${isOverdue(t) ? ' overdue' : ''}">${t.due || ''}</div>
       <div class="today-btn ${isToday(t) ? 'active' : ''}" title="Toggle Today"></div>`;
     row.querySelector('input').addEventListener('change', (e) => toggleDone(t, e.target.checked));
     row.querySelector('.today-btn').addEventListener('click', (e) => {
