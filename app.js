@@ -1,11 +1,12 @@
 // ── CONFIG ──────────────────────────────────────────────────────────
 const CLIENT_ID = '469662960124-l8ssq4psn55oupe0t6ouu2laeiol1abv.apps.googleusercontent.com';
-const APP_VERSION = '2026.07.27.2';
+const APP_VERSION = '2026.07.29.1';
 const SPREADSHEET_ID = '16J873aq698SxJsFgiWcNJOubn3R3z_5_J8NMlrsuIsA';
 const TAXONOMY_SHEET_ID = '1oQM1alY_nyVpk8LcHsFmEMpEk-jy0b18vf506_ubj9s';
 const BOARD_SHEET_ID = '1LPMQEO9DCQ7-CAKtCIDkWTOFZ3mK6e1qBcDfa3lggQQ';
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
-const RANGE = 'A:H'; // Task ID | Task | Activity Tag | Due Date | Priority | Notes | Done | Today
+const RANGE = 'A:I'; // Task ID | Task | Activity Tag | Due Date | Priority | Notes | Done | Today | Quick Note
+const LONG_PRESS_MS = 550;
 const TAXONOMY_RANGE = 'A:E'; // Code | Label | Parent | Domain | Notes
 const BOARD_RANGE = 'A:J'; // Code | Name | Domain | Stage | Priority | NextUp | Notes | MilestoneDate | Updated | Show
 
@@ -197,7 +198,8 @@ async function fetchTasks() {
       priority: r[4] || 'Medium',
       notes: r[5] || '',
       done: (r[6] || '').toString().toUpperCase() === 'TRUE',
-      today: (r[7] || '').toString().toUpperCase() === 'TRUE'
+      today: (r[7] || '').toString().toUpperCase() === 'TRUE',
+      note: r[8] || ''
     })).filter(t => t.id);
     saveCache(tasks);
     setStatus('Synced ' + new Date().toLocaleTimeString());
@@ -210,11 +212,15 @@ async function fetchTasks() {
   }
 }
 
-// ── WRITE (checkbox / today toggle) ─────────────────────────────────
+// ── WRITE (checkbox / today toggle / quick note) ─────────────────────
+// `value` may be a boolean (Done/Today columns, written as TRUE/FALSE) or a
+// free-text string (Quick Note column, written as-is).
 async function writeColumn(task, column, field, value) {
   task[field] = value;
   saveCache(tasks); // optimistic local update
   render();
+
+  const cellValue = (typeof value === 'boolean') ? (value ? 'TRUE' : 'FALSE') : value;
 
   if (accessToken && navigator.onLine) {
     try {
@@ -225,16 +231,16 @@ async function writeColumn(task, column, field, value) {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ values: [[value ? 'TRUE' : 'FALSE']] })
+        body: JSON.stringify({ values: [[cellValue]] })
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       setStatus('Saved.');
     } catch (e) {
-      queueWrite(task.row, column, value ? 'TRUE' : 'FALSE');
+      queueWrite(task.row, column, cellValue);
       setStatus('Offline or write failed — queued for later sync.');
     }
   } else {
-    queueWrite(task.row, column, value ? 'TRUE' : 'FALSE');
+    queueWrite(task.row, column, cellValue);
     setStatus('Offline — change queued, will sync when connected.');
   }
 }
@@ -245,6 +251,18 @@ function toggleDone(task, checked) {
 
 function toggleTodayShared(task, checked) {
   return writeColumn(task, 'H', 'today', checked);
+}
+
+// Appends a timestamped quick note to column I, preserving whatever's already there
+// (including anything Grover itself wrote there via a Grover Tasks push).
+function saveQuickNote(task, text) {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return Promise.resolve();
+  const stamp = todayStr();
+  const existing = (task.note || '').trim();
+  const entry = '[' + stamp + '] ' + trimmed;
+  const updated = existing ? existing + '\n' + entry : entry;
+  return writeColumn(task, 'I', 'note', updated);
 }
 
 async function flushQueue() {
@@ -269,6 +287,24 @@ async function flushQueue() {
   }
   clearQueue();
   setStatus('All queued changes synced.');
+}
+
+// ── QUICK NOTE MODAL ──────────────────────────────────────────────────
+let noteModalTask = null;
+
+function openNoteModal(task) {
+  noteModalTask = task;
+  document.getElementById('note-modal-title').textContent = task.task;
+  document.getElementById('note-modal-existing').textContent = task.note || '';
+  document.getElementById('note-modal-existing').style.display = task.note ? 'block' : 'none';
+  document.getElementById('note-input').value = '';
+  document.getElementById('note-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('note-input').focus(), 50);
+}
+
+function closeNoteModal() {
+  document.getElementById('note-modal').style.display = 'none';
+  noteModalTask = null;
 }
 
 // ── RENDER ──────────────────────────────────────────────────────────
@@ -323,7 +359,7 @@ function render() {
     row.innerHTML = `
       <input type="checkbox" ${t.done ? 'checked' : ''} />
       <div class="content">
-        <div class="label">${t.task}</div>
+        <div class="label">${t.task}${t.note ? ' <span class="note-flag" title="Has a note">📝</span>' : ''}</div>
         <div class="proj">${labelTag(t.tag)} · <span class="priority-tag">${t.priority || 'Medium'}</span></div>
       </div>
       <div class="due-col${isOverdue(t) ? ' overdue' : ''}">${t.due || ''}</div>
@@ -333,6 +369,33 @@ function render() {
       e.preventDefault();
       e.stopPropagation();
       toggleTodayShared(t, !isToday(t));
+    });
+
+    // Long-press (touch or mouse-hold) opens the quick-note screen instead of
+    // toggling Done. We suppress the label's synthetic click on release so the
+    // checkbox doesn't also fire.
+    let pressTimer = null;
+    let longPressed = false;
+    const startPress = () => {
+      longPressed = false;
+      pressTimer = setTimeout(() => {
+        longPressed = true;
+        if (navigator.vibrate) navigator.vibrate(12);
+        openNoteModal(t);
+      }, LONG_PRESS_MS);
+    };
+    const cancelPress = () => clearTimeout(pressTimer);
+    row.addEventListener('touchstart', startPress, { passive: true });
+    row.addEventListener('touchend', cancelPress);
+    row.addEventListener('touchmove', cancelPress);
+    row.addEventListener('mousedown', startPress);
+    row.addEventListener('mouseup', cancelPress);
+    row.addEventListener('mouseleave', cancelPress);
+    row.addEventListener('click', (e) => {
+      if (longPressed) {
+        e.preventDefault(); // stop the label's synthetic checkbox click
+        longPressed = false;
+      }
     });
     return row;
   }
@@ -533,6 +596,17 @@ window.addEventListener('load', () => {
       );
       render();
     });
+  });
+
+  document.getElementById('note-cancel').addEventListener('click', closeNoteModal);
+  document.getElementById('note-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'note-modal') closeNoteModal(); // tap outside the box
+  });
+  document.getElementById('note-save').addEventListener('click', () => {
+    const text = document.getElementById('note-input').value;
+    const task = noteModalTask;
+    closeNoteModal();
+    if (task) saveQuickNote(task, text);
   });
 });
 
