@@ -82,6 +82,39 @@
   .proj { font-size: 11.5px; color: #999; margin-top: 2px; }
   .priority-tag { font-weight: 600; }
   .empty { font-size: 13px; color: #999; padding: 2rem 0; text-align: center; }
+  .note-flag { font-size: 12px; margin-left: 2px; }
+  #note-modal {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    align-items: flex-end; justify-content: center; z-index: 50;
+  }
+  #note-modal .modal-box {
+    background: #fff; width: 100%; max-width: 640px; border-radius: 14px 14px 0 0;
+    padding: 1rem 1rem 1.25rem;
+  }
+  .modal-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .modal-existing {
+    display: none; font-size: 12.5px; color: #777; white-space: pre-wrap;
+    background: #f5f4f0; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px;
+    max-height: 120px; overflow-y: auto;
+  }
+  #note-input {
+    width: 100%; font-family: inherit; font-size: 14px; border: 1px solid #d0cfc8;
+    border-radius: 8px; padding: 10px; resize: vertical; min-height: 80px;
+  }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+  .modal-actions button {
+    font-size: 14px; padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer;
+    font-family: inherit;
+  }
+  #note-cancel { background: #f0f0ee; color: #555; }
+  #note-save { background: #0d8c72; color: #fff; font-weight: 500; }
+  @media (prefers-color-scheme: dark) {
+    #note-modal .modal-box { background: #1c1c1a; }
+    .modal-title { color: #e8e6df; }
+    .modal-existing { background: #252523; color: #999; }
+    #note-input { background: #252523; color: #e8e6df; border-color: #333; }
+    #note-cancel { background: #252523; color: #999; }
+  }
   @media (prefers-color-scheme: dark) {
     body { background: #1c1c1a; color: #e8e6df; }
     .group-head { color: #888; border-bottom-color: #333; }
@@ -119,6 +152,19 @@
     <button id="board-all">All Categories</button>
   </div>
   <div id="tasks"></div>
+
+  <div id="note-modal">
+    <div class="modal-box">
+      <div class="modal-title" id="note-modal-title"></div>
+      <div class="modal-existing" id="note-modal-existing"></div>
+      <textarea id="note-input" placeholder="Add a quick note…"></textarea>
+      <div class="modal-actions">
+        <button id="note-cancel">Cancel</button>
+        <button id="note-save">Save</button>
+      </div>
+    </div>
+  </div>
+
   <script src="./app.js"></script>
 </body>
 </html>
