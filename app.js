@@ -1,6 +1,6 @@
 // ── CONFIG ──────────────────────────────────────────────────────────
 const CLIENT_ID = '469662960124-l8ssq4psn55oupe0t6ouu2laeiol1abv.apps.googleusercontent.com';
-const APP_VERSION = '2026.07.29.1';
+const APP_VERSION = '2026.07.29.2';
 const SPREADSHEET_ID = '16J873aq698SxJsFgiWcNJOubn3R3z_5_J8NMlrsuIsA';
 const TAXONOMY_SHEET_ID = '1oQM1alY_nyVpk8LcHsFmEMpEk-jy0b18vf506_ubj9s';
 const BOARD_SHEET_ID = '1LPMQEO9DCQ7-CAKtCIDkWTOFZ3mK6e1qBcDfa3lggQQ';
@@ -198,7 +198,7 @@ async function fetchTasks() {
       priority: r[4] || 'Medium',
       notes: r[5] || '',
       done: (r[6] || '').toString().toUpperCase() === 'TRUE',
-      today: (r[7] || '').toString().toUpperCase() === 'TRUE',
+      todayFlag: (r[7] || '').toString().trim().toUpperCase(), // 'TRUE' | 'FALSE' | '' (never set)
       note: r[8] || ''
     })).filter(t => t.id);
     saveCache(tasks);
@@ -250,7 +250,7 @@ function toggleDone(task, checked) {
 }
 
 function toggleTodayShared(task, checked) {
-  return writeColumn(task, 'H', 'today', checked);
+  return writeColumn(task, 'H', 'todayFlag', checked ? 'TRUE' : 'FALSE');
 }
 
 // Appends a timestamped quick note to column I, preserving whatever's already there
@@ -350,7 +350,9 @@ function render() {
   const personalItems = list.filter(t => t.tag.trim().startsWith('P') && !isToday(t));
 
   function isToday(t) {
-    return t.due === today || t.today;
+    if (t.todayFlag === 'FALSE') return false; // explicit dismissal always wins
+    if (t.todayFlag === 'TRUE') return true;   // explicit flag always wins
+    return t.due === today;                    // no explicit assertion yet — auto-surface if due today
   }
 
   function taskRow(t) {
@@ -429,10 +431,7 @@ function render() {
     return byDateAscending(items).sort((a, b) => (order[a.priority] ?? 1) - (order[b.priority] ?? 1));
   }
 
-  function renderDomainSection(title, items) {
-    if (!items.length) return;
-    container.appendChild(domainHead(title));
-
+  function renderGroupedItems(items) {
     if (sortMode === 'category') {
       const groups = {};
       items.forEach(t => {
@@ -454,9 +453,15 @@ function render() {
     }
   }
 
+  function renderDomainSection(title, items) {
+    if (!items.length) return;
+    container.appendChild(domainHead(title));
+    renderGroupedItems(items);
+  }
+
   if (todayItems.length) {
     container.appendChild(domainHead('Today'));
-    todayItems.forEach(t => container.appendChild(taskRow(t)));
+    renderGroupedItems(todayItems); // now respects the By Category / By Priority toggle, same as Work/Personal
   }
 
   if (domainFirst === 'Personal') {
