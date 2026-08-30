@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tasks-app-2026.07.29.2';
+const CACHE_NAME = 'tasks-app-2026.08.03.1';
 const SHELL_FILES = [
   './',
   './index.html',
