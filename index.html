@@ -10,14 +10,24 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
+
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: #f5f4f0; color: #1a1a18;
-    padding: 1.25rem 1rem 3rem; max-width: 640px; margin: 0 auto;
+    background: #f5f4f0;
+    color: #1a1a18;
+    padding: 1.25rem 1rem 3rem;
+    max-width: 640px;
+    margin: 0 auto;
   }
-  h1 { font-size: 18px; font-weight: 600; margin-bottom: 2px; }
+
+  h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
 
   .app-header {
     display: flex;
@@ -26,7 +36,7 @@
     margin-bottom: 2px;
   }
 
-  .grover-image {
+  .app-image {
     width: 52px;
     height: 52px;
     object-fit: cover;
@@ -34,157 +44,547 @@
     flex-shrink: 0;
   }
 
-  #status { font-size: 12px; color: #999; margin-bottom: 1rem; min-height: 16px; }
-  #version-tag { font-size: 11px; color: #bbb; margin-bottom: 4px; }
+  #status {
+    font-size: 12px;
+    color: #999;
+    margin-bottom: 1rem;
+    min-height: 16px;
+  }
+
+  #version-tag {
+    font-size: 11px;
+    color: #bbb;
+    margin-bottom: 4px;
+  }
+
   #connect-btn {
-    background: #0d8c72; color: #fff; border: none; border-radius: 8px;
-    padding: 10px 16px; font-size: 14px; font-weight: 500; cursor: pointer;
+    background: #0d8c72;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
     margin-bottom: 1rem;
   }
-  .tab-bar { display: flex; gap: 6px; margin-bottom: 0.75rem; }
+
+  .tab-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 0.75rem;
+  }
+
   .tab-bar button {
-    font-size: 13px; padding: 6px 14px; border: 1px solid #d0cfc8; border-radius: 20px;
-    background: #fff; cursor: pointer; color: #555; font-family: inherit;
-  }
-  .tab-bar button.active { background: #1a1a18; color: #fff; border-color: #1a1a18; }
-  #sort-controls, #board-controls { display: flex; gap: 6px; margin-bottom: 1rem; flex-wrap: wrap; }
-  #sort-controls button, #board-controls button {
-    font-size: 12px; padding: 5px 12px; border: 1px solid #d0cfc8; border-radius: 16px;
-    background: #f0f0ee; cursor: pointer; color: #666; font-family: inherit;
-  }
-  #sort-controls button.active, #board-controls button.active { background: #0d8c72; color: #fff; border-color: #0d8c72; }
-  .board-card.untracked { opacity: 0.6; border-left-color: #ddd; }
-  .board-card.untracked .board-stage { background: transparent; color: #bbb; }
-  .subhead {
-    font-size: 12px; font-weight: 600; color: #666; margin: 0.6rem 0 0.15rem 4px;
-  }
-  .due-col { margin-left: auto; font-size: 11.5px; color: #999; white-space: nowrap; padding-top: 2px; flex-shrink: 0; }
-  .due-col.overdue { color: #d32f2f; font-weight: 700; }
-  .today-btn {
-    width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ccc;
-    margin-top: 2px; flex-shrink: 0; cursor: pointer; background: transparent;
-  }
-  .today-btn.active { background: #0d8c72; border-color: #0d8c72; }
-  .board-card {
-    border: 1px solid #e0dfd8; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
-    border-left: 3px solid #ccc;
-  }
-  .board-card.priority-high { border-left-color: #c0392b; }
-  .board-card.priority-medium { border-left-color: #e67e22; }
-  .board-card.priority-low { border-left-color: #ccc; }
-  .board-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
-  .board-code { font-size: 10.5px; color: #999; }
-  .board-stage { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #888; background: #f0f0ee; padding: 2px 6px; border-radius: 3px; }
-  .board-name { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
-  .board-next { font-size: 12.5px; color: #444; margin-bottom: 4px; }
-  .board-track { position: relative; height: 4px; background: #eee; border-radius: 2px; margin: 6px 0 2px; }
-  .board-marker { position: absolute; top: -3px; width: 10px; height: 10px; border-radius: 50%; background: #0d8c72; transform: translateX(-50%); }
-  .board-date { font-size: 10.5px; color: #999; margin-bottom: 4px; }
-  .board-notes { font-size: 11.5px; color: #888; line-height: 1.4; }
-  .group-head {
-    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
-    color: #888; margin: 1.2rem 0 0.4rem; padding-bottom: 4px; border-bottom: 1.5px solid #d0cfc8;
-  }
-  .item {
-    display: flex; align-items: flex-start; gap: 10px; padding: 10px 4px;
-    border-bottom: 0.5px solid #e8e6df; cursor: pointer;
-  }
-  .item input[type="checkbox"] {
-    width: 18px; height: 18px; margin-top: 2px; flex-shrink: 0; accent-color: #0d8c72;
-  }
-  .content { flex: 1; }
-  .label { font-size: 14px; font-weight: 500; }
-  .item.done .label { color: #aaa; text-decoration: line-through; }
-  .proj { font-size: 11.5px; color: #999; margin-top: 2px; }
-  .priority-tag { font-weight: 600; }
-  .empty { font-size: 13px; color: #999; padding: 2rem 0; text-align: center; }
-  .note-flag { font-size: 12px; margin-left: 2px; }
-  #note-modal {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4);
-    align-items: flex-end; justify-content: center; z-index: 50;
-  }
-  #note-modal .modal-box {
-    background: #fff; width: 100%; max-width: 640px; border-radius: 14px 14px 0 0;
-    padding: 1rem 1rem 1.25rem;
-  }
-  .modal-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
-  .modal-existing {
-    display: none; font-size: 12.5px; color: #777; white-space: pre-wrap;
-    background: #f5f4f0; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px;
-    max-height: 120px; overflow-y: auto;
-  }
-  #note-input {
-    width: 100%; font-family: inherit; font-size: 14px; border: 1px solid #d0cfc8;
-    border-radius: 8px; padding: 10px; resize: vertical; min-height: 80px;
-  }
-  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
-  .modal-actions button {
-    font-size: 14px; padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer;
+    font-size: 13px;
+    padding: 6px 14px;
+    border: 1px solid #d0cfc8;
+    border-radius: 20px;
+    background: #fff;
+    cursor: pointer;
+    color: #555;
     font-family: inherit;
   }
-  #note-cancel { background: #f0f0ee; color: #555; }
-  #note-save { background: #0d8c72; color: #fff; font-weight: 500; }
+
+  .tab-bar button.active {
+    background: #1a1a18;
+    color: #fff;
+    border-color: #1a1a18;
+  }
+
+  #sort-controls,
+  #board-controls {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  #sort-controls button,
+  #board-controls button {
+    font-size: 12px;
+    padding: 5px 12px;
+    border: 1px solid #d0cfc8;
+    border-radius: 16px;
+    background: #f0f0ee;
+    cursor: pointer;
+    color: #666;
+    font-family: inherit;
+  }
+
+  #sort-controls button.active,
+  #board-controls button.active {
+    background: #0d8c72;
+    color: #fff;
+    border-color: #0d8c72;
+  }
+
+  .board-card.untracked {
+    opacity: 0.6;
+    border-left-color: #ddd;
+  }
+
+  .board-card.untracked .board-stage {
+    background: transparent;
+    color: #bbb;
+  }
+
+  .subhead {
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
+    margin: 0.6rem 0 0.15rem 4px;
+  }
+
+  .due-col {
+    margin-left: auto;
+    font-size: 11.5px;
+    color: #999;
+    white-space: nowrap;
+    padding-top: 2px;
+    flex-shrink: 0;
+  }
+
+  .due-col.overdue {
+    color: #d32f2f;
+    font-weight: 700;
+  }
+
+  .today-btn {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1.5px solid #ccc;
+    margin-top: 2px;
+    flex-shrink: 0;
+    cursor: pointer;
+    background: transparent;
+  }
+
+  .today-btn.active {
+    background: #0d8c72;
+    border-color: #0d8c72;
+  }
+
+  .board-card {
+    border: 1px solid #e0dfd8;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    border-left: 3px solid #ccc;
+  }
+
+  .board-card.priority-high {
+    border-left-color: #c0392b;
+  }
+
+  .board-card.priority-medium {
+    border-left-color: #e67e22;
+  }
+
+  .board-card.priority-low {
+    border-left-color: #ccc;
+  }
+
+  .board-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3px;
+  }
+
+  .board-code {
+    font-size: 10.5px;
+    color: #999;
+  }
+
+  .board-stage {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #888;
+    background: #f0f0ee;
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+
+  .board-name {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 3px;
+  }
+
+  .board-next {
+    font-size: 12.5px;
+    color: #444;
+    margin-bottom: 4px;
+  }
+
+  .board-track {
+    position: relative;
+    height: 4px;
+    background: #eee;
+    border-radius: 2px;
+    margin: 6px 0 2px;
+  }
+
+  .board-marker {
+    position: absolute;
+    top: -3px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #0d8c72;
+    transform: translateX(-50%);
+  }
+
+  .board-date {
+    font-size: 10.5px;
+    color: #999;
+    margin-bottom: 4px;
+  }
+
+  .board-notes {
+    font-size: 11.5px;
+    color: #888;
+    line-height: 1.4;
+  }
+
+  .group-head {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: #888;
+    margin: 1.2rem 0 0.4rem;
+    padding-bottom: 4px;
+    border-bottom: 1.5px solid #d0cfc8;
+  }
+
+  .item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 4px;
+    border-bottom: 0.5px solid #e8e6df;
+    cursor: pointer;
+  }
+
+  .item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    flex-shrink: 0;
+    accent-color: #0d8c72;
+  }
+
+  .content {
+    flex: 1;
+  }
+
+  .label {
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .item.done .label {
+    color: #aaa;
+    text-decoration: line-through;
+  }
+
+  .proj {
+    font-size: 11.5px;
+    color: #999;
+    margin-top: 2px;
+  }
+
+  .priority-tag {
+    font-weight: 600;
+  }
+
+  .recurrence-tag {
+    font-weight: 600;
+    color: #0d8c72;
+  }
+
+  .empty {
+    font-size: 13px;
+    color: #999;
+    padding: 2rem 0;
+    text-align: center;
+  }
+
+  .note-flag {
+    font-size: 12px;
+    margin-left: 2px;
+  }
+
+  #note-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 50;
+  }
+
+  #note-modal .modal-box {
+    background: #fff;
+    width: 100%;
+    max-width: 640px;
+    border-radius: 14px 14px 0 0;
+    padding: 1rem 1rem 1.25rem;
+  }
+
+  .modal-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .modal-existing {
+    display: none;
+    font-size: 12.5px;
+    color: #777;
+    white-space: pre-wrap;
+    background: #f5f4f0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+
+  #note-input {
+    width: 100%;
+    font-family: inherit;
+    font-size: 14px;
+    border: 1px solid #d0cfc8;
+    border-radius: 8px;
+    padding: 10px;
+    resize: vertical;
+    min-height: 80px;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .modal-actions button {
+    font-size: 14px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  #note-cancel {
+    background: #f0f0ee;
+    color: #555;
+  }
+
+  #note-save {
+    background: #0d8c72;
+    color: #fff;
+    font-weight: 500;
+  }
 
   @media (prefers-color-scheme: dark) {
-    #note-modal .modal-box { background: #1c1c1a; }
-    .modal-title { color: #e8e6df; }
-    .modal-existing { background: #252523; color: #999; }
-    #note-input { background: #252523; color: #e8e6df; border-color: #333; }
-    #note-cancel { background: #252523; color: #999; }
+    #note-modal .modal-box {
+      background: #1c1c1a;
+    }
 
-    body { background: #1c1c1a; color: #e8e6df; }
-    .group-head { color: #888; border-bottom-color: #333; }
-    .item { border-bottom-color: #2e2e2b; }
-    .label { color: #e8e6df; }
-    .item.done .label { color: #666; }
-    .proj { color: #888; }
-    .subhead { color: #999; }
-    .tab-bar button { background: #252523; border-color: #333; color: #999; }
-    .tab-bar button.active { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
-    #sort-controls button, #board-controls button { background: #252523; border-color: #333; color: #999; }
-    .board-card { border-color: #333; }
-    .board-stage { background: #252523; color: #999; }
-    .board-name { color: #e8e6df; }
-    .board-next { color: #ccc; }
-    .board-notes { color: #888; }
+    .modal-title {
+      color: #e8e6df;
+    }
+
+    .modal-existing {
+      background: #252523;
+      color: #999;
+    }
+
+    #note-input {
+      background: #252523;
+      color: #e8e6df;
+      border-color: #333;
+    }
+
+    #note-cancel {
+      background: #252523;
+      color: #999;
+    }
+
+    body {
+      background: #1c1c1a;
+      color: #e8e6df;
+    }
+
+    .group-head {
+      color: #888;
+      border-bottom-color: #333;
+    }
+
+    .item {
+      border-bottom-color: #2e2e2b;
+    }
+
+    .label {
+      color: #e8e6df;
+    }
+
+    .item.done .label {
+      color: #666;
+    }
+
+    .proj {
+      color: #888;
+    }
+
+    .recurrence-tag {
+      color: #6fcdb8;
+    }
+
+    .subhead {
+      color: #999;
+    }
+
+    .tab-bar button {
+      background: #252523;
+      border-color: #333;
+      color: #999;
+    }
+
+    .tab-bar button.active {
+      background: #e8e6df;
+      color: #1a1a18;
+      border-color: #e8e6df;
+    }
+
+    #sort-controls button,
+    #board-controls button {
+      background: #252523;
+      border-color: #333;
+      color: #999;
+    }
+
+    .board-card {
+      border-color: #333;
+    }
+
+    .board-stage {
+      background: #252523;
+      color: #999;
+    }
+
+    .board-name {
+      color: #e8e6df;
+    }
+
+    .board-next {
+      color: #ccc;
+    }
+
+    .board-notes {
+      color: #888;
+    }
   }
 </style>
 </head>
+
 <body>
   <div class="app-header">
-    <img src="./icon.jpg" class="grover-image" alt="Grover">
+    <img
+      src="./icon.jpg"
+      class="app-image"
+      alt="Tasks icon"
+    >
     <h1>Tasks</h1>
   </div>
 
   <div id="status">Loading…</div>
-  <button id="connect-btn">Connect to Google</button>
+
+  <button id="connect-btn">
+    Connect to Google
+  </button>
 
   <div class="tab-bar">
-    <button id="tab-tasks" class="active">Tasks</button>
-    <button id="tab-board">Board</button>
+    <button
+      id="tab-tasks"
+      class="active"
+    >
+      Tasks
+    </button>
+
+    <button id="tab-board">
+      Board
+    </button>
   </div>
 
   <div id="sort-controls">
-    <button id="sort-domain">Work first</button>
-    <button id="sort-category">By Category</button>
-    <button id="sort-priority" class="active">By Priority</button>
+    <button id="sort-domain">
+      Work first
+    </button>
+
+    <button id="sort-category">
+      By Category
+    </button>
+
+    <button
+      id="sort-priority"
+      class="active"
+    >
+      By Priority
+    </button>
   </div>
 
-  <div id="board-controls" style="display:none">
-    <button id="board-tracked" class="active">Tracked Only</button>
-    <button id="board-all">All Categories</button>
+  <div
+    id="board-controls"
+    style="display:none"
+  >
+    <button
+      id="board-tracked"
+      class="active"
+    >
+      Tracked Only
+    </button>
+
+    <button id="board-all">
+      All Categories
+    </button>
   </div>
 
   <div id="tasks"></div>
 
   <div id="note-modal">
     <div class="modal-box">
-      <div class="modal-title" id="note-modal-title"></div>
-      <div class="modal-existing" id="note-modal-existing"></div>
-      <textarea id="note-input" placeholder="Add a quick note…"></textarea>
+      <div
+        class="modal-title"
+        id="note-modal-title"
+      ></div>
+
+      <div
+        class="modal-existing"
+        id="note-modal-existing"
+      ></div>
+
+      <textarea
+        id="note-input"
+        placeholder="Add a quick note…"
+      ></textarea>
+
       <div class="modal-actions">
-        <button id="note-cancel">Cancel</button>
-        <button id="note-save">Save</button>
+        <button id="note-cancel">
+          Cancel
+        </button>
+
+        <button id="note-save">
+          Save
+        </button>
       </div>
     </div>
   </div>
