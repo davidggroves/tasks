@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tasks-app-2026.09.02.2';
+const CACHE_NAME = 'tasks-app-2026.09.02.3';
 const ASSETS = [
   './', './index.html', './app.js', './config.js', './manifest.json',
   './icon.jpg', './icon-192.png', './icon-512.png'

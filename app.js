@@ -15,12 +15,14 @@
   const TASK_RANGE = CFG.ranges?.tasks || 'A:J';
   const TAXONOMY_RANGE = CFG.ranges?.taxonomy || 'A:E';
   const BOARD_RANGE = CFG.ranges?.board || 'A:J';
+  const RECURRING_RANGE = CFG.ranges?.recurring || "'Recurring Completions'!A:B";
   const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
   const PREFIX = (CFG.storagePrefix || 'tasks_app').replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
 
   const CACHE_KEY = `${PREFIX}_tasks_cache`;
   const TAXONOMY_CACHE_KEY = `${PREFIX}_taxonomy_cache`;
   const BOARD_CACHE_KEY = `${PREFIX}_board_cache`;
+  const RECURRING_CACHE_KEY = `${PREFIX}_recurring_completions_cache`;
   const QUEUE_KEY = `${PREFIX}_tasks_pending_writes`;
   const TOKEN_KEY = `${PREFIX}_tasks_token_cache`;
 
@@ -34,6 +36,7 @@
   let taxonomy = {};
   let taxonomyParent = {};
   let board = [];
+  let recurringCompletions = [];
   let detailTask = null;
 
   function escapeHtml(s) {
@@ -86,9 +89,9 @@
 
   function initAuth(){
     if(!CLIENT_ID || CLIENT_ID.includes('REPLACE_')){ setStatus('OAuth client ID is not configured.'); return; }
-    tokenClient=google.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPES,callback:(resp)=>{if(resp.error){setStatus('Sign-in failed: '+resp.error);return;}accessToken=resp.access_token;saveToken(accessToken,resp.expires_in);setStatus('Connected.');document.getElementById('connect-btn').style.display='none';Promise.all([fetchTaxonomy(),fetchBoard()]).then(fetchTasks);}});
+    tokenClient=google.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPES,callback:(resp)=>{if(resp.error){setStatus('Sign-in failed: '+resp.error);return;}accessToken=resp.access_token;saveToken(accessToken,resp.expires_in);setStatus('Connected.');document.getElementById('connect-btn').style.display='none';Promise.all([fetchTaxonomy(),fetchBoard(),fetchRecurringCompletions()]).then(fetchTasks);}});
     const cached=loadValidToken();
-    if(cached){accessToken=cached;document.getElementById('connect-btn').style.display='none';setStatus('Connected (cached).');if(navigator.onLine)Promise.all([fetchTaxonomy(),fetchBoard()]).then(fetchTasks);}else{const c=loadTaxonomyCache();taxonomy=c.labels||{};taxonomyParent=c.parents||{};}
+    if(cached){accessToken=cached;document.getElementById('connect-btn').style.display='none';setStatus('Connected (cached).');if(navigator.onLine)Promise.all([fetchTaxonomy(),fetchBoard(),fetchRecurringCompletions()]).then(fetchTasks);}else{const c=loadTaxonomyCache();taxonomy=c.labels||{};taxonomyParent=c.parents||{};}
   }
   function connect(){ if(tokenClient) tokenClient.requestAccessToken({prompt:''}); }
 
@@ -104,28 +107,109 @@
     try{const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${BOARD_SHEET_ID}/values/${BOARD_RANGE}`,{headers:{Authorization:`Bearer ${accessToken}`}});if(!res.ok)throw new Error('HTTP '+res.status);const data=await res.json();board=(data.values||[]).slice(1).map(r=>({code:r[0]||'',name:r[1]||'',domain:r[2]||'',stage:r[3]||'',priority:r[4]||'Medium',nextUp:r[5]||'',notes:r[6]||'',milestoneDate:r[7]||'',updated:r[8]||'',show:(r[9]||'').toString().toUpperCase()!=='FALSE'})).filter(p=>p.code);localStorage.setItem(BOARD_CACHE_KEY,JSON.stringify(board));}catch(e){const raw=localStorage.getItem(BOARD_CACHE_KEY);board=raw?JSON.parse(raw):[];}
   }
 
+  function loadRecurringCache(){try{return JSON.parse(localStorage.getItem(RECURRING_CACHE_KEY)||'[]');}catch(_){return[];}}
+  function saveRecurringCache(){localStorage.setItem(RECURRING_CACHE_KEY,JSON.stringify(recurringCompletions));}
+  async function fetchRecurringCompletions(){
+    if(!accessToken||!navigator.onLine){recurringCompletions=loadRecurringCache();return;}
+    try{
+      const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(RECURRING_RANGE)}`,{headers:{Authorization:`Bearer ${accessToken}`}});
+      if(!res.ok)throw new Error('HTTP '+res.status);
+      const data=await res.json();
+      recurringCompletions=(data.values||[]).slice(1).map((r,i)=>({row:i+2,id:r[0]||'',date:r[1]||''})).filter(x=>x.id&&x.date);
+      saveRecurringCache();
+    }catch(_){recurringCompletions=loadRecurringCache();}
+  }
+
+  function localDateStr(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+  function weekBounds(){const now=new Date();now.setHours(12,0,0,0);const day=(now.getDay()+6)%7;const start=new Date(now);start.setDate(now.getDate()-day);const end=new Date(start);end.setDate(start.getDate()+6);return [localDateStr(start),localDateStr(end)];}
+  function recurringQuota(task){const m=String(task.recurrence||'').match(/^([2-7])x\/week$/i);return m?Number(m[1]):null;}
+  function recurringCountThisWeek(task){const [start,end]=weekBounds();return recurringCompletions.filter(x=>x.id===task.id&&x.date>=start&&x.date<=end).length;}
+  function recurringCompletedToday(task){const today=localDateStr();return recurringCompletions.some(x=>x.id===task.id&&x.date===today);}
+  function recurringProgress(task){const q=recurringQuota(task);return q?`${recurringCountThisWeek(task)}/${q}`:'';}
+  function recurringVisible(task){
+    if(!task.recurrence)return true;
+    if(task.done)return false;
+    const todayDone=recurringCompletedToday(task);
+    const rule=String(task.recurrence).trim();
+    if(/^daily$/i.test(rule))return true;
+    if(/^weekdays$/i.test(rule)){const d=new Date().getDay();return d>=1&&d<=5;}
+    const quota=recurringQuota(task);
+    if(quota)return todayDone||recurringCountThisWeek(task)<quota;
+    return true;
+  }
+  async function setRecurringCompletion(task,complete){
+    if(!accessToken||!navigator.onLine){setStatus('Connect to Google to update recurring completion.');render();return;}
+    const today=localDateStr();
+    try{
+      if(complete){
+        if(recurringCompletedToday(task)){render();return;}
+        const appendRange=encodeURIComponent("'Recurring Completions'!A:B");
+        const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${appendRange}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({values:[[task.id,today]]})});
+        if(!res.ok){let detail='HTTP '+res.status;try{const b=await res.json();detail=b?.error?.message||detail;}catch(_){}throw new Error(detail);}
+        const data=await res.json();
+        const updated=data?.updates?.updatedRange||'';const m=updated.match(/!A(\d+):/);const row=m?Number(m[1]):null;
+        recurringCompletions.push({row,id:task.id,date:today});
+      }else{
+        const hit=recurringCompletions.find(x=>x.id===task.id&&x.date===today);
+        if(!hit){render();return;}
+        if(!hit.row)await fetchRecurringCompletions();
+        const target=recurringCompletions.find(x=>x.id===task.id&&x.date===today);
+        if(!target?.row)throw new Error('Could not locate today’s completion row');
+        const clearRange=encodeURIComponent(`'Recurring Completions'!A${target.row}:B${target.row}`);
+        const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${clearRange}:clear`,{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:'{}'});
+        if(!res.ok){let detail='HTTP '+res.status;try{const b=await res.json();detail=b?.error?.message||detail;}catch(_){}throw new Error(detail);}
+        recurringCompletions=recurringCompletions.filter(x=>!(x.id===task.id&&x.date===today));
+      }
+      saveRecurringCache();render();setStatus(complete?'Recurring completion recorded.':'Recurring completion undone.');
+    }catch(e){setStatus('Recurring update failed: '+e.message);await fetchRecurringCompletions();render();}
+  }
+
   async function fetchTasks(){
     if(!accessToken||!navigator.onLine)return;setStatus('Syncing…');
     try{const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TASK_RANGE}`,{headers:{Authorization:`Bearer ${accessToken}`}});if(!res.ok)throw new Error('HTTP '+res.status);const data=await res.json();tasks=(data.values||[]).slice(1).map((r,i)=>({row:i+2,id:r[0]||'',task:r[1]||'',tag:r[2]||'',due:r[3]||'',priority:r[4]||'Medium',notes:r[5]||'',done:(r[6]||'').toString().toUpperCase()==='TRUE',todayFlag:(r[7]||'').toString().trim().toUpperCase(),note:r[8]||'',recurrence:r[9]||''})).filter(t=>t.id);saveCache(tasks);setStatus('Synced '+new Date().toLocaleTimeString());render();flushQueue();}catch(e){setStatus('Sync failed, showing cached data: '+e.message);tasks=loadCache();render();}
   }
 
   async function writeColumn(task,column,field,value){task[field]=value;saveCache(tasks);render();const cellValue=typeof value==='boolean'?(value?'TRUE':'FALSE'):value;if(accessToken&&navigator.onLine){try{const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${column}${task.row}?valueInputOption=RAW`,{method:'PUT',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({values:[[cellValue]]})});if(!res.ok)throw new Error('HTTP '+res.status);setStatus('Saved.');}catch(e){queueWrite(task.row,column,cellValue);setStatus('Offline or write failed — queued for later sync.');}}else{queueWrite(task.row,column,cellValue);setStatus('Offline — change queued, will sync when connected.');}}
-  const toggleDone=(task,v)=>writeColumn(task,'G','done',v);
+  const toggleDone=(task,v)=>task.recurrence?setRecurringCompletion(task,v):writeColumn(task,'G','done',v);
   const toggleTodayShared=(task,v)=>writeColumn(task,'H','todayFlag',v?'TRUE':'FALSE');
-  function todayStr(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-  function saveTaskNotes(task,text){return writeColumn(task,'F','notes',text||'');}
+  function todayStr(){return localDateStr();}
+  async function saveTaskNotes(task,text){
+    const button=document.getElementById('task-notes-save');
+    const original=button.textContent;
+    const value=text||'';
+    button.disabled=true;
+    button.textContent='Saving…';
+    try{
+      if(!accessToken||!navigator.onLine)throw new Error('Not connected to Google');
+      const range=`F${task.row}`;
+      const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=RAW`,{method:'PUT',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({values:[[value]]})});
+      if(!res.ok){let detail='HTTP '+res.status;try{const body=await res.json();detail=body?.error?.message||detail;}catch(_){}throw new Error(detail);}
+      task.notes=value;
+      saveCache(tasks);
+      render();
+      setStatus('Notes saved.');
+      button.textContent='Saved';
+      setTimeout(()=>{if(detailTask===task){button.disabled=false;button.textContent='Save notes';}},900);
+      return true;
+    }catch(e){
+      setStatus('Notes save failed: '+e.message);
+      button.disabled=false;
+      button.textContent='Try again';
+      return false;
+    }
+  }
 
   async function flushQueue(){const q=getQueue();if(!q.length||!accessToken||!navigator.onLine)return;setStatus(`Syncing ${q.length} queued change(s)…`);for(const item of q){try{const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${item.column}${item.row}?valueInputOption=RAW`,{method:'PUT',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({values:[[item.value]]})});if(!res.ok)throw new Error('HTTP '+res.status);}catch(e){setStatus('Some queued changes failed to sync — will retry next time.');return;}}clearQueue();setStatus('All queued changes synced.');}
 
   function normalizeDue(due){if(!due)return'';if(/^\d{4}-\d{2}-\d{2}$/.test(due))return due;const m=due.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);return m?`${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`:'';}
-  function isOverdue(t){const norm=normalizeDue(t.due);return !t.done&&!!norm&&norm<todayStr();}
+  function isOverdue(t){if(t.recurrence)return false;const norm=normalizeDue(t.due);return !t.done&&!!norm&&norm<todayStr();}
   function isToday(t){if(t.todayFlag==='FALSE')return false;if(t.todayFlag==='TRUE')return true;return CFG.dueDateImpliesToday ? normalizeDue(t.due)===todayStr() : false;}
 
   function openTaskModal(task){detailTask=task;document.getElementById('task-modal-title').textContent=task.task;document.getElementById('task-modal-meta').textContent=[labelTag(task.tag),task.priority,task.due?`Due ${task.due}`:'',task.recurrence?`Recurring ${task.recurrence}`:''].filter(Boolean).join(' · ');document.getElementById('task-modal-notes').value=task.notes||'';document.getElementById('task-modal').style.display='flex';}
   function closeTaskModal(){document.getElementById('task-modal').style.display='none';detailTask=null;}
 
-  function render(){if(activeTab==='board'){renderBoard();return;}const list=tasks.length?tasks:loadCache();const container=document.getElementById('tasks');container.innerHTML='';const todayItems=list.filter(isToday),workItems=list.filter(t=>t.tag.trim().startsWith('W')&&!isToday(t)),personalItems=list.filter(t=>t.tag.trim().startsWith('P')&&!isToday(t)),otherItems=list.filter(t=>!t.tag.trim().startsWith('W')&&!t.tag.trim().startsWith('P')&&!isToday(t));
-    function taskRow(t){const row=document.createElement('div');row.className='item'+(t.done?' done':'');row.innerHTML=`<input type="checkbox" ${t.done?'checked':''}/><div class="content"><div class="label">${escapeHtml(t.task)}${t.notes?' <span class="note-flag" title="Has notes">📝</span>':''}</div><div class="proj">${escapeHtml(labelTag(t.tag))} · <span class="priority-tag">${escapeHtml(t.priority||'Medium')}</span></div></div><div class="due-col${isOverdue(t)?' overdue':''}">${escapeHtml(t.due||'')}</div><button type="button" class="today-btn ${isToday(t)?'active':''}" aria-label="Toggle Today"></button>`;
+  function render(){if(activeTab==='board'){renderBoard();return;}const base=tasks.length?tasks:loadCache();const list=base.filter(recurringVisible);const container=document.getElementById('tasks');container.innerHTML='';const todayItems=list.filter(isToday),workItems=list.filter(t=>t.tag.trim().startsWith('W')&&!isToday(t)),personalItems=list.filter(t=>t.tag.trim().startsWith('P')&&!isToday(t)),otherItems=list.filter(t=>!t.tag.trim().startsWith('W')&&!t.tag.trim().startsWith('P')&&!isToday(t));
+    function taskRow(t){const recurringDone=t.recurrence&&recurringCompletedToday(t);const checked=t.recurrence?recurringDone:t.done;const progress=t.recurrence?recurringProgress(t):'';const row=document.createElement('div');row.className='item'+(checked?' done':'');row.innerHTML=`<input type="checkbox" ${checked?'checked':''}/><div class="content"><div class="label">${escapeHtml(t.task)}${t.notes?' <span class="note-flag" title="Has notes">📝</span>':''}</div><div class="proj">${escapeHtml(labelTag(t.tag))} · <span class="priority-tag">${escapeHtml(t.priority||'Medium')}</span>${progress?` · <span class="recurring-progress">${escapeHtml(progress)}</span>`:''}</div></div><div class="due-col${(!t.recurrence&&isOverdue(t))?' overdue':''}">${escapeHtml(t.recurrence?'':(t.due||''))}</div><button type="button" class="today-btn ${isToday(t)?'active':''}" aria-label="Toggle Today"></button>`;
       row.querySelector('input').addEventListener('click',e=>e.stopPropagation());row.querySelector('input').addEventListener('change',e=>toggleDone(t,e.target.checked));row.querySelector('.today-btn').addEventListener('click',e=>{e.preventDefault();e.stopPropagation();toggleTodayShared(t,!isToday(t));});row.querySelector('.content').addEventListener('click',e=>{e.preventDefault();e.stopPropagation();openTaskModal(t);});row.addEventListener('click',()=>openTaskModal(t));return row;}
     const subhead=t=>{const h=document.createElement('div');h.className='subhead';h.textContent=t;return h;};const domainHead=t=>{const h=document.createElement('div');h.className='group-head';h.textContent=t;return h;};
     const byDate=items=>[...items].sort((a,b)=>{if(a.done!==b.done)return a.done?1:-1;const da=normalizeDue(a.due),db=normalizeDue(b.due);if(!da&&!db)return 0;if(!da)return 1;if(!db)return-1;return da.localeCompare(db);});const byPriority=items=>{const order={High:0,Medium:1,Low:2};return [...items].sort((a,b)=>{if(a.done!==b.done)return a.done?1:-1;const p=(order[a.priority]??1)-(order[b.priority]??1);if(p)return p;const da=normalizeDue(a.due),db=normalizeDue(b.due);if(!da&&!db)return 0;if(!da)return 1;if(!db)return-1;return da.localeCompare(db);});};
@@ -141,11 +225,11 @@
 
   function setTab(tab){activeTab=tab;document.getElementById('tab-tasks').classList.toggle('active',tab==='tasks');document.getElementById('tab-board').classList.toggle('active',tab==='board');document.getElementById('sort-controls').style.display=tab==='tasks'?'flex':'none';document.getElementById('board-controls').style.display=tab==='board'?'flex':'none';render();}
 
-  function bindEvents(){document.getElementById('connect-btn').addEventListener('click',connect);document.getElementById('tab-tasks').addEventListener('click',()=>setTab('tasks'));document.getElementById('tab-board').addEventListener('click',()=>setTab('board'));document.getElementById('sort-domain').addEventListener('click',()=>{domainFirst=domainFirst==='Work'?'Personal':'Work';document.getElementById('sort-domain').textContent=domainFirst+' first';render();});['category','priority'].forEach(mode=>document.getElementById('sort-'+mode).addEventListener('click',()=>{sortMode=mode;['category','priority'].forEach(m=>document.getElementById('sort-'+m).classList.toggle('active',m===mode));render();}));['tracked','all'].forEach(mode=>document.getElementById('board-'+mode).addEventListener('click',()=>{boardMode=mode;['tracked','all'].forEach(m=>document.getElementById('board-'+m).classList.toggle('active',m===mode));render();}));document.getElementById('task-modal-close').addEventListener('click',closeTaskModal);document.getElementById('task-modal').addEventListener('click',e=>{if(e.target.id==='task-modal')closeTaskModal();});document.getElementById('task-notes-save').addEventListener('click',async()=>{const task=detailTask;if(!task)return;const text=document.getElementById('task-modal-notes').value;await saveTaskNotes(task,text);openTaskModal(task);});}
+  function bindEvents(){document.getElementById('connect-btn').addEventListener('click',connect);document.getElementById('tab-tasks').addEventListener('click',()=>setTab('tasks'));document.getElementById('tab-board').addEventListener('click',()=>setTab('board'));document.getElementById('sort-domain').addEventListener('click',()=>{domainFirst=domainFirst==='Work'?'Personal':'Work';document.getElementById('sort-domain').textContent=domainFirst+' first';render();});['category','priority'].forEach(mode=>document.getElementById('sort-'+mode).addEventListener('click',()=>{sortMode=mode;['category','priority'].forEach(m=>document.getElementById('sort-'+m).classList.toggle('active',m===mode));render();}));['tracked','all'].forEach(mode=>document.getElementById('board-'+mode).addEventListener('click',()=>{boardMode=mode;['tracked','all'].forEach(m=>document.getElementById('board-'+m).classList.toggle('active',m===mode));render();}));document.getElementById('task-modal-close').addEventListener('click',closeTaskModal);document.getElementById('task-modal').addEventListener('click',e=>{if(e.target.id==='task-modal')closeTaskModal();});document.getElementById('task-notes-save').addEventListener('click',async()=>{const task=detailTask;if(!task)return;const text=document.getElementById('task-modal-notes').value;const ok=await saveTaskNotes(task,text);if(ok&&detailTask===task)document.getElementById('task-modal-notes').value=task.notes||'';});}
 
   function boot(){injectShell();if(new Date().getDay()===0||new Date().getDay()===6){domainFirst='Personal';document.getElementById('sort-domain').textContent='Personal first';}tasks=loadCache();const c=loadTaxonomyCache();taxonomy=c.labels||{};taxonomyParent=c.parents||{};board=JSON.parse(localStorage.getItem(BOARD_CACHE_KEY)||'[]');render();bindEvents();if(typeof google==='undefined'||!google.accounts?.oauth2)setStatus('Google sign-in library did not load. Refresh when online.');else initAuth();}
 
-  window.addEventListener('online',()=>{setStatus('Back online, syncing…');if(accessToken)Promise.all([fetchTaxonomy(),fetchBoard()]).then(fetchTasks);});window.addEventListener('offline',()=>setStatus('Offline — showing cached data.'));
+  window.addEventListener('online',()=>{setStatus('Back online, syncing…');if(accessToken)Promise.all([fetchTaxonomy(),fetchBoard(),fetchRecurringCompletions()]).then(fetchTasks);});window.addEventListener('offline',()=>setStatus('Offline — showing cached data.'));
   if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js'));
   window.addEventListener('load',boot);
 })();
